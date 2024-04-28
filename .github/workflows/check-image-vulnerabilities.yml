@@ -31,24 +31,14 @@ jobs:
     permissions:
       # Needed for stackrox/central-login to create the JWT token.
       id-token: write
+      security-events: write
     strategy:
       matrix:
-        image:
-          [
-            "central-db",
-            "collector",
-            "collector-slim",
-            "main",
-            "roxctl",
-            "scanner",
-            "scanner-db",
-            "scanner-db-slim",
-            "scanner-slim",
-            "scanner-v4",
-            "scanner-v4-db",
-            "stackrox-operator",
-          ]
+        image: ["main"]
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Central login
         uses: stackrox/central-login@v1
         with:
@@ -62,15 +52,13 @@ jobs:
 
       - name: Scan images for vulnerabilities
         run: |
-          {
-            echo "### ${{ matrix.image }}:${{ inputs.version }}"
-            echo "<details><summary>Click to expand</summary>"
-            echo ""
-            # We need a monospaced font for the table layout, and `terraform` has
-            # nicer color highlighting than the default language agnostic code block.
-            echo '```terraform'
-            roxctl image scan --output=table \
-              --image="quay.io/rhacs-eng/${{ matrix.image }}:${{ inputs.version }}"
-            echo '```'
-            echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          make tag
+          roxctl image scan --output=sarif \
+            --image="quay.io/rhacs-eng/${{ matrix.image }}:${{ inputs.version }}" \
+            > results.sarif
+
+      - name: Upload roxctl scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          category: ${{ matrix.image }}
+          sarif_file: results.sarif
